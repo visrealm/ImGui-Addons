@@ -113,9 +113,8 @@ namespace imgui_addons
         ImGui::CloseCurrentPopup();
     }
 
-    bool ImGuiFileBrowser::showFileDialog(const std::string& label, const DialogMode mode, const ImVec2& sz_xy, const std::string& valid_types)
+    bool ImGuiFileBrowser::showFileDialog(const std::string& label, const DialogMode mode, const ImVec2& sz_xy, const std::string& valid_types, bool *show)
     {
-
         dialog_mode = mode;
         ImGuiIO& io = ImGui::GetIO();
         max_size.x = io.DisplaySize.x;
@@ -130,7 +129,7 @@ namespace imgui_addons
         else
             filter_mode = FilterMode_Files | FilterMode_Dirs;
 
-        if (ImGui::BeginPopupModal(label.c_str(), nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+        if (ImGui::BeginPopupModal(label.c_str(), show, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
             bool show_error = false;
 
@@ -165,7 +164,7 @@ namespace imgui_addons
             show_error |= renderNavAndSearchBarRegion();
             show_error |= renderFileListRegion();
             show_error |= renderInputTextAndExtRegion();
-            show_error |= renderButtonsAndCheckboxRegion();
+            show_error |= renderButtonsAndCheckboxRegion(show);
 
             if(validate_file)
             {
@@ -199,6 +198,7 @@ namespace imgui_addons
                     //Add a trailing "/" to emphasize its a directory not a file. If you want just the dir name it's accessible through "selected_fn"
                     if(dialog_mode == DialogMode::SELECT)
                         selected_path += "/";
+                    *show = false;
                     closeDialog();
                 }
             }
@@ -206,7 +206,10 @@ namespace imgui_addons
             // We don't need to check as the modals will only be shown if OpenPopup is called
             showInvalidFileModal();
             if(showReplaceFileModal())
+            {
+                *show = false;
                 closeDialog();
+            }
 
             //Show Error Modal if there was an error opening any directory
             if(show_error)
@@ -217,6 +220,7 @@ namespace imgui_addons
             return (!selected_fn.empty() && !selected_path.empty());
         }
         else
+            *show = false;
             return false;
     }
 
@@ -521,7 +525,7 @@ namespace imgui_addons
         return show_error;
     }
 
-    bool ImGuiFileBrowser::renderButtonsAndCheckboxRegion()
+    bool ImGuiFileBrowser::renderButtonsAndCheckboxRegion(bool*show)
     {
         ImVec2 pw_size = ImGui::GetWindowSize();
         ImGuiStyle& style = ImGui::GetStyle();
@@ -594,7 +598,10 @@ namespace imgui_addons
         //Render Cancel Button
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(button_width, 0)))
+        {
+            *show = false;
             closeDialog();
+        }
 
         return show_error;
     }
@@ -918,8 +925,15 @@ namespace imgui_addons
                 //If any other extension is selected, filter files having only that extension
                 else
                 {
-                    if(filter.PassFilter(subfiles[i].name.c_str()) && (ImStristr(subfiles[i].name.c_str(), nullptr, valid_exts[selected_ext_idx].c_str(), nullptr)) != nullptr)
-                        filtered_files.push_back(&subfiles[i]);
+                    if (filter.PassFilter(subfiles[i].name.c_str())) {
+                        std::string ext = subfiles[i].name.find_last_of('.') == std::string::npos ? "" : subfiles[i].name.substr(subfiles[i].name.find_last_of('.'));
+                        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+                        if (ext.length() > 0 && find(valid_exts.begin(), valid_exts.end(), ext) != valid_exts.end())
+                        {
+                            filtered_files.push_back(&subfiles[i]);
+                        }
+                    }// && (ImStristr(subfiles[i].name.c_str(), nullptr, valid_exts[selected_ext_idx].c_str(), nullptr)) != nullptr)
+                        //filtered_files.push_back(&subfiles[i]);
                 }
             }
         }
@@ -1127,7 +1141,7 @@ namespace imgui_addons
                     return true;
             }
             size_t idx = selected_fn.find_last_of('.');
-            std::string file_ext = idx == std::string::npos ? "" : selected_fn.substr(idx, selected_fn.length() - idx);
+            std::string file_ext = (idx == std::string::npos) ? "" : selected_fn.substr(idx, selected_fn.length() - idx);
 
             std::transform( file_ext.begin(), file_ext.end(), file_ext.begin(), []( unsigned char c ) { return std::tolower( c ); } );
 
